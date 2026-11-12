@@ -1,0 +1,70 @@
+import logging
+from twitchio.ext import commands
+from core.manager import PlatformManager
+from config import Config
+
+logger = logging.getLogger(__name__)
+
+class MultiStreamBot(commands.Bot):
+    def __init__(self, manager: PlatformManager):
+        super().__init__(
+            client_id=Config.TWITCH_CLIENT_ID,
+            client_secret=Config.TWITCH_CLIENT_SECRET,
+            bot_id=Config.TWITCH_BOT_NICK,
+            owner_id=Config.TWITCH_OWNER_ID,
+            token=Config.TWITCH_TOKEN,
+            prefix=Config.COMMAND_PREFIX,
+            initial_channels=[Config.TWITCH_CHANNEL],
+        )
+        self.manager = manager
+
+    async def event_ready(self):
+        logger.info("Бот запущен как | %s", self.nick)
+
+    async def event_message(self, message):
+        if message.echo:
+            return
+        await self.handle_commands(message)
+
+    def _check_permission(self, ctx: commands.Context) -> bool:
+        return ctx.author.is_mod or ctx.author.is_broadcaster
+
+    @commands.command(name="title")
+    async def cmd_title(self, ctx: commands.Context, *, new_title: str = None):
+        if not self._check_permission(ctx):
+            await ctx.send("У вас нет прав для этой команды.")
+            return
+        if not new_title:
+            await ctx.send("Использование: !title <новое название>")
+            return
+
+        await ctx.send("Обновляю название на всех платформах...")
+        results = await self.manager.update_title(new_title)
+
+        success_platforms = [p for p, ok in results.items() if ok]
+        failed_platforms = [p for p, ok in results.items() if not ok]
+
+        if success_platforms:
+            await ctx.send(f"✅ Название обновлено: {', '.join(success_platforms)}")
+        if failed_platforms:
+            await ctx.send(f"⚠️ Не удалось обновить: {', '.join(failed_platforms)}")
+
+    @commands.command(name="game")
+    async def cmd_game(self, ctx: commands.Context, *, game_name: str = None):
+        if not self._check_permission(ctx):
+            await ctx.send("У вас нет прав для этой команды.")
+            return
+        if not game_name:
+            await ctx.send("Использование: !game <название игры>")
+            return
+
+        await ctx.send("Обновляю категорию на всех платформах...")
+        results = await self.manager.update_category(game_name)
+
+        success_platforms = [p for p, ok in results.items() if ok]
+        failed_platforms = [p for p, ok in results.items() if not ok]
+
+        if success_platforms:
+            await ctx.send(f"✅ Категория обновлена: {', '.join(success_platforms)}")
+        if failed_platforms:
+            await ctx.send(f"⚠️ Не удалось обновить: {', '.join(failed_platforms)}")
